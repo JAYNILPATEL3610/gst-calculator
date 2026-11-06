@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>GST Calculator</title>
+<style>
+  :root{--bg:#f6f5f1;--card:#fff;--ink:#1d1d1b;--mute:#6b6a64;--line:#e4e2da;--accent:#1f6f50;--accent-soft:#e3f1ea;}
+  @media (prefers-color-scheme:dark){:root{--bg:#161614;--card:#201f1d;--ink:#f1efe8;--mute:#9c9a92;--line:#33322e;--accent:#4fb88b;--accent-soft:#1d3329;}}
+  *{box-sizing:border-box}
+  body{margin:0;padding-top:env(safe-area-inset-top);background:var(--bg);color:var(--ink);font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;display:flex;justify-content:center;padding:24px 14px}
+  .app{width:100%;max-width:460px}
+  h1{font-size:20px;margin:0 0 4px}
+  .sub{color:var(--mute);font-size:13px;margin:0 0 18px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px;margin-bottom:14px}
+  label.t{display:block;font-size:12px;color:var(--mute);margin:0 0 8px;text-transform:uppercase;letter-spacing:.04em}
+  .seg{display:grid;grid-template-columns:1fr 1fr;background:var(--bg);border-radius:10px;padding:3px;margin-bottom:16px}
+  .seg button{border:0;background:transparent;color:var(--mute);padding:10px;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer}
+  .seg button.on{background:var(--card);color:var(--ink);box-shadow:0 1px 3px rgba(0,0,0,.12)}
+  .amt{display:flex;align-items:center;border:1px solid var(--line);border-radius:10px;padding:0 12px;margin-bottom:16px}
+  .amt span{color:var(--mute);font-size:20px;margin-right:6px}
+  .amt input{flex:1;border:0;outline:0;background:transparent;color:var(--ink);font-size:24px;font-weight:600;padding:12px 0;min-width:0}
+  .amt:focus-within{border-color:var(--accent)}
+  .chips{display:flex;flex-wrap:wrap;gap:8px}
+  .chips button{border:1px solid var(--line);background:transparent;color:var(--ink);padding:8px 14px;border-radius:20px;font-size:14px;cursor:pointer}
+  .chips button.on{background:var(--accent);border-color:var(--accent);color:#fff}
+  .chips input{width:84px;border:1px solid var(--line);background:transparent;color:var(--ink);border-radius:20px;padding:8px 12px;font-size:14px;outline:0}
+  .chips input:focus,.chips input.on{border-color:var(--accent)}
+  .row{display:flex;justify-content:space-between;align-items:baseline;padding:10px 0;border-bottom:1px solid var(--line);font-size:15px}
+  .row:last-child{border-bottom:0}
+  .row .k{color:var(--mute)}
+  .row .v{font-weight:600;font-variant-numeric:tabular-nums}
+  .row.total{font-size:18px}
+  .row.total .v{color:var(--accent)}
+  .split{margin-top:4px;padding:10px 12px;background:var(--accent-soft);border-radius:10px;font-size:13px}
+  .split .row{padding:5px 0;font-size:13px}
+  .tabs{display:flex;gap:6px;margin-bottom:8px}
+  .tabs button{border:0;background:transparent;color:var(--mute);font-size:13px;padding:4px 8px;border-radius:6px;cursor:pointer}
+  .tabs button.on{background:var(--card);color:var(--ink);font-weight:600}
+  .actions{display:flex;gap:8px}
+  .actions button{flex:1;border:1px solid var(--line);background:var(--card);color:var(--ink);padding:11px;border-radius:10px;font-size:14px;cursor:pointer}
+  .actions button:hover{border-color:var(--accent)}
+  .note{font-size:12px;color:var(--mute);text-align:center;margin-top:12px}
+</style>
+</head>
+<body>
+<div class="app">
+  <h1>GST Calculator</h1>
+  <p class="sub">Add GST to a base price, or remove it from a GST-inclusive price.</p>
+
+  <div class="card">
+    <div class="seg" id="mode">
+      <button data-m="add" class="on">Add GST</button>
+      <button data-m="remove">Remove GST</button>
+    </div>
+
+    <label class="t" id="amtLabel">Amount (excl. GST)</label>
+    <div class="amt"><span>₹</span><input id="amount" type="text" inputmode="decimal" placeholder="0.00" autocomplete="off"></div>
+
+    <label class="t">GST rate</label>
+    <div class="chips" id="rates"></div>
+  </div>
+
+  <div class="card">
+    <div class="row"><span class="k">Basic amount</span><span class="v" id="rBase">₹0.00</span></div>
+    <div class="row"><span class="k" id="gstLabel">GST @ 18%</span><span class="v" id="rGst">₹0.00</span></div>
+    <div class="row total"><span class="k">Total (incl. GST)</span><span class="v" id="rTotal">₹0.00</span></div>
+
+    <div style="margin-top:14px">
+      <div class="tabs" id="tabs">
+        <button data-s="intra" class="on">Same state (CGST + SGST)</button>
+        <button data-s="inter">Other state (IGST)</button>
+      </div>
+      <div class="split" id="split"></div>
+    </div>
+  </div>
+
+  <div class="actions">
+    <button id="copy">Copy result</button>
+    <button id="clear">Clear</button>
+  </div>
+  <p class="note">Formula: Basic = Total ÷ (1 + rate/100). GST = Total − Basic.</p>
+</div>
+
+<script>
+const RATES=[0,0.25,3,5,12,18,28];
+let mode='add', rate=18, supply='intra';
+const $=id=>document.getElementById(id);
+const fmt=n=>'₹'+(isFinite(n)?n:0).toLocaleString('en-IN',{minimumFractionDigits:2,maximumFractionDigits:2});
+const r2=n=>Math.round((n+Number.EPSILON)*100)/100;
+
+// rate chips
+const ratesEl=$('rates');
+RATES.forEach(r=>{const b=document.createElement('button');b.textContent=r+'%';b.dataset.r=r;b.onclick=()=>{rate=r;custom.value='';custom.classList.remove('on');draw()};ratesEl.appendChild(b)});
+const custom=document.createElement('input');custom.placeholder='Custom %';custom.inputMode='decimal';
+custom.oninput=()=>{const v=parseFloat(custom.value);if(!isNaN(v)&&v>=0){rate=v;custom.classList.add('on')}draw()};
+ratesEl.appendChild(custom);
+
+$('mode').onclick=e=>{const m=e.target.dataset.m;if(!m)return;mode=m;
+  [...$('mode').children].forEach(b=>b.classList.toggle('on',b.dataset.m===m));
+  $('amtLabel').textContent=m==='add'?'Amount (excl. GST)':'Amount (incl. GST)';calc()};
+$('tabs').onclick=e=>{const s=e.target.dataset.s;if(!s)return;supply=s;
+  [...$('tabs').children].forEach(b=>b.classList.toggle('on',b.dataset.s===s));calc()};
+$('amount').oninput=calc;
+
+function draw(){
+  [...ratesEl.querySelectorAll('button')].forEach(b=>b.classList.toggle('on',!custom.classList.contains('on')&&parseFloat(b.dataset.r)===rate));
+  calc();
+}
+let out={base:0,gst:0,total:0};
+function calc(){
+  const a=parseFloat($('amount').value.replace(/,/g,''))||0;
+  let base,gst,total;
+  if(mode==='add'){base=a;gst=a*rate/100;total=base+gst}
+  else{total=a;base=a/(1+rate/100);gst=total-base}
+  base=r2(base);gst=r2(gst);total=r2(total);out={base,gst,total};
+  $('rBase').textContent=fmt(base);$('rGst').textContent=fmt(gst);$('rTotal').textContent=fmt(total);
+  $('gstLabel').textContent='GST @ '+rate+'%';
+  if(supply==='intra'){
+    const h=r2(gst/2);
+    $('split').innerHTML=`<div class="row"><span class="k">CGST @ ${rate/2}%</span><span class="v">${fmt(h)}</span></div><div class="row"><span class="k">SGST @ ${rate/2}%</span><span class="v">${fmt(r2(gst-h))}</span></div>`;
+  }else{
+    $('split').innerHTML=`<div class="row"><span class="k">IGST @ ${rate}%</span><span class="v">${fmt(gst)}</span></div>`;
+  }
+}
+$('clear').onclick=()=>{$('amount').value='';calc();$('amount').focus()};
+$('copy').onclick=async()=>{
+  const t=`Basic: ${fmt(out.base)}\nGST @ ${rate}%: ${fmt(out.gst)}\nTotal: ${fmt(out.total)}`;
+  try{await navigator.clipboard.writeText(t);$('copy').textContent='Copied ✓'}catch(e){$('copy').textContent='Copy not allowed here'}
+  setTimeout(()=>$('copy').textContent='Copy result',1500);
+};
+draw();
+</script>
+</body>
+</html>
